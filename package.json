@@ -1,0 +1,25 @@
+{
+  "name": "lezer-snowsql-formatter",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Snowflake-Labs/lezer-snowsql-formatter.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Snowflake-Labs/lezer-snowsql-formatter/issues"
+  },
+  "homepage": "https://github.com/Snowflake-Labs/lezer-snowsql-formatter#readme",
+  "dependencies": {
+    "lezer-tree": "^0.13.2"
+  },
+  "devDependencies": {
+    "@types/node": "^15.12.2"
+  }
+}
