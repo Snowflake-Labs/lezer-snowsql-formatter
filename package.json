@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "cd node_modules/lezer-snowsql && npm install"
   },
   "repository": {
     "type": "git",
@@ -17,7 +18,8 @@
   },
   "homepage": "https://github.com/Snowflake-Labs/lezer-snowsql-formatter#readme",
   "dependencies": {
-    "lezer-tree": "^0.13.2"
+    "lezer-tree": "^0.13.2",
+    "lezer-snowsql": "git+https://github.com/Snowflake-Labs/lezer-snowsql.git#lezer-snowsql-wip"
   },
   "devDependencies": {
     "@types/node": "^15.12.2"

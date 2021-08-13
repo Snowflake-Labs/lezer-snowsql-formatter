@@ -1,375 +1,382 @@
-import {
-    Tree,
-    TreeFragment,
-    stringInput,
-    NodeType,
-    Input,
-    TreeCursor,
-  } from "lezer-tree";
-  const { performance } = require("perf_hooks");
-  import { parser } from "lezer-snowsql";
-  var t0 = performance.now();
-  
-  let doc1 = `select foo, bar from foobar where foo >= 50;`;
-  
+import { Tree, TreeFragment, stringInput, Input, TreeCursor } from 'lezer-tree';
+import { parser } from 'lezer-snowsql';
+
+export function format(input: string) {
+  var doc1: string = input;
+
+  var functionMap: { [key: string]: Function } = {
+    Select: keywordFormatter,
+
+    Target_list: targetListFormatter,
+
+    From_clause: fromClauseFormatter,
+
+    Where_clause: whereClauseFormatter,
+
+    From: keywordFormatter,
+
+    From_list: fromListFormatter,
+
+    Lss: noIndentFormatter,
+
+    Lte: noIndentFormatter,
+
+    Gte: noIndentFormatter,
+
+    Eql: noIndentFormatter,
+
+    Opr: parenFormatter,
+  };
+
   function parse(d: string, fragments?: readonly TreeFragment[] | any) {
     let parse = parser.startParse(stringInput(d), 0, { fragments }),
       result: Tree | null | any;
     while (!(result = parse.advance())) {}
     return result;
   }
-  var val = parse(doc1);
-  
-  console.log("\n---\nOriginal Query: \n" + doc1 + "\n----");
-  
-  function focusedNode(cursor: TreeCursor): {
-    readonly type: NodeType;
-    readonly from: number;
-    readonly to: number;
-  } {
-    const { type, from, to } = cursor;
-    return { type, from, to };
-  }
-  
-  enum Color {
-    Red = 31,
-    Green = 32,
-    Yellow = 33,
-  }
-  
-  function colorize(value: any, color: number): string {
-    return "\u001b[" + color + "m" + String(value) + "\u001b[39m";
-  }
-  
-  export function printTree(
-    tree: Tree,
-    input: Input | string,
-    options: {
-      from?: number;
-      to?: number;
-      start?: number;
-      includeParents?: boolean;
-    } = {}
-  ): string {
-    const cursor = tree.cursor();
-    if (typeof input === "string") input = stringInput(input);
-    const {
-      from = 0,
-      to = input.length,
-      start = 0,
-      includeParents = false,
-    } = options;
-    let output = "";
-    const prefixes: string[] = [];
-    for (;;) {
-      const node = focusedNode(cursor);
-      let leave = false;
-      if (node.from <= to && node.to >= from) {
-        const enter =
-          !node.type.isAnonymous &&
-          (includeParents || (node.from >= from && node.to <= to));
-        if (enter) {
-          leave = true;
-          const isTop = output === "";
-          if (!isTop || node.from > 0) {
-            output += (!isTop ? "\n" : "") + prefixes.join("");
-            const hasNextSibling = cursor.nextSibling() && cursor.prevSibling();
-            if (hasNextSibling) {
-              output += " ├─ ";
-              prefixes.push(" │  ");
-            } else {
-              output += " └─ ";
-              prefixes.push("    ");
-            }
-          }
-          output += node.type.isError
-            ? colorize(node.type.name, Color.Red)
-            : node.type.name;
-        }
-        const isLeaf = !cursor.firstChild();
-        if (enter) {
-          const hasRange = node.from !== node.to;
-          output +=
-            " " +
-            (hasRange
-              ? "[" +
-                colorize(start + node.from, Color.Yellow) +
-                ".." +
-                colorize(start + node.to, Color.Yellow) +
-                "]"
-              : colorize(start + node.from, Color.Yellow));
-          if (hasRange && isLeaf) {
-            output +=
-              ": " +
-              colorize(
-                JSON.stringify(input.read(node.from, node.to)),
-                Color.Green
-              );
-          }
-        }
-        if (!isLeaf) continue;
-      }
-      for (;;) {
-        if (leave) prefixes.pop();
-        leave = cursor.type.isAnonymous;
-        if (cursor.nextSibling()) break;
-        if (!cursor.parent()) return output;
-        leave = true;
-      }
-    }
-  }
-  
-  console.log(printTree(val, doc1));
-  
-  export function mainFormatter(
-    cursor: TreeCursor,
-    input: Input | string
-  ): string {
-    if (typeof input === "string") input = stringInput(input);
-    let formattedQuery: string = "";
+
+  function mainFormatter(cursor: TreeCursor, input: Input | string): string {
+    if (typeof input === 'string') input = stringInput(input);
+    let formattedQuery = '';
     var stmtCount: number = 0;
     for (;;) {
       const isLeaf = !cursor.firstChild();
-  
-      if (
-        cursor.type.name == "Select_no_parens" &&
-        cursor.node.parent?.type.name == "SelectStmt"
-      ) {
+      if (cursor.type.name == 'Select_no_parens' && cursor.node.parent?.type.name == 'SelectStmt') {
         stmtCount += 1;
-        if (stmtCount > 1) formattedQuery += "\n\n\n";
+        if (stmtCount > 1) formattedQuery += '\n\n\n';
         formattedQuery += selectStmtFormatter(cursor, 0);
       }
-  
-      if (cursor.type.name == "CreateStmt") {
+
+      if (cursor.type.name == 'DropStmt') {
         stmtCount += 1;
-        if (stmtCount > 1) formattedQuery += "\n\n\n";
-        formattedQuery += "Create Placeholder";
+        if (stmtCount > 1) formattedQuery += '\n\n\n';
+        formattedQuery += dropStmtFormatter(cursor, 0);
       }
-  
-      if (cursor.type.name == "Smc") {
-        formattedQuery += "\n;";
+
+      if (cursor.type.name == 'CreateStmt') {
+        stmtCount += 1;
+        if (stmtCount > 1) formattedQuery += '\n\n\n';
+        formattedQuery += tempFormatter(cursor);
       }
-  
+      
+      if (cursor.type.name == 'CreateIntegrationStmt') {
+        stmtCount += 1;
+        if (stmtCount > 1) formattedQuery += '\n\n\n';
+        formattedQuery += tempFormatter(cursor);
+      }
+
+      if (cursor.type.name == 'Smc') {
+        formattedQuery += '\n;';
+      }
+
       if (!isLeaf) continue;
       //not a leaf? continue
-  
+
       for (;;) {
         if (cursor.nextSibling()) break; //move to the next sibling
-        if (!cursor.parent()) return formattedQuery; //moves to parent, if there's no sibling
+        if (!cursor.parent()) {
+          return formattedQuery;
+        } //moves to parent, if there's no sibling
       }
     }
   }
-  
-  console.log(
-    "\n***************\n" +
-      mainFormatter(val.cursor(), doc1) +
-      "\n***************\n"
-  );
-  
+
   function basicIndent(count: number): string {
-    var basicIndent: string = "  ";
+    var basicIndent = '  ';
     return basicIndent.repeat(count);
   }
-  
-  function targetListFormatter(cursor: TreeCursor, indent: number) :string {
-    var output: string = "";
+
+  function targetListFormatter(cursor: TreeCursor, indent: number): string {
+    var output: string = '';
     var tempCursor: TreeCursor = cursor.node.cursor;
-  
+
+    var children: any = [];
+    children = tempCursor.node.getChildren('Identifier');
+
     if (tempCursor.firstChild()) {
       do {
-        if (tempCursor.type.name.toString() == "Identifier") {
-          output += basicIndent(indent) + sliceDoc(tempCursor);
+        if (tempCursor.type.name.toString() == 'Identifier') {
+          output += basicIndent(indent + 1) + sliceDoc(tempCursor);
         }
-  
-        if (tempCursor.type.name.toString() == "Comma") {
-          output += ",\n";
+        if (tempCursor.type.name.toString() == 'Star') {
+          output += basicIndent(indent + 1) + sliceDoc(tempCursor);
+        }
+
+        if (tempCursor.type.name.toString() == 'Comma') {
+          output += ',\n';
         }
       } while (tempCursor.nextSibling());
+      output += '\n';
     }
     tempCursor.parent();
     return output;
   }
-  
+
   function fromClauseFormatter(cursor: TreeCursor, indent: number): string {
-    var output: string = "";
+    var output: string = '';
     var tempCursor: TreeCursor = cursor.node.cursor;
-  
+
     if (tempCursor.firstChild()) {
       do {
-        if (tempCursor.type.name == "From") {
-          output += "\n" + keywordFormatter(tempCursor, indent);
-        }
-  
-        if (tempCursor.type.name == "From_list") {
-          output += fromListFormatter(tempCursor, indent + 1);
-        }
+        output += functionMap[tempCursor.type.name](tempCursor, indent);
       } while (tempCursor.nextSibling());
     }
-  
+
     tempCursor.parent();
     return output;
   }
-  
+
   function noIndentFormatter(cursor: TreeCursor): string {
-    var output: string = "";
-    output = " " + sliceDoc(cursor);
+    var output: string = '';
+    output = ' ' + sliceDoc(cursor) + ' ';
     return output;
   }
-  
-  function expressionFormatter(cursor: TreeCursor, indent: number): string {
-    var output: string = "";
-    var tempCursor: TreeCursor = cursor.node.cursor;
-  
+
+  function plainFormatter(cursor: TreeCursor, indent: number): string {
+    return basicIndent(indent) + sliceDoc(cursor) + ' ';
+  }
+
+  function dropStmtFormatter(cursor: TreeCursor, indent: number): string {
+    var output: string = '';
+
+    var tempCursor = cursor.node.cursor;
     if (tempCursor.firstChild()) {
       do {
-        if (tempCursor.type.name == "ColIdentifier") {
+        if (tempCursor.type.name == 'Drop') {
+          output += plainFormatter(tempCursor, indent);
+        }
+        if (tempCursor.type.name == 'DdlTarget') {
+          output += plainFormatter(tempCursor, indent);
+        }
+
+        if (tempCursor.type.name == 'IfExists') {
+          output += ifExistsFormatter(tempCursor, indent);
+        }
+
+        if (tempCursor.type.name == 'Identifier') {
+          output += identifierFormatter(tempCursor, indent);
+        }
+
+        if (tempCursor.type.name == 'DropOptions') {
+          output += plainFormatter(tempCursor, indent);
+        }
+      } while (tempCursor.nextSibling());
+    }
+
+    return output;
+  }
+
+  function identifierFormatter(cursor: TreeCursor, indent: number): string {
+    var output = '';
+    var tempCursor = cursor.node.cursor;
+    output = basicIndent(indent) + sliceDoc(tempCursor);
+
+    return output;
+  }
+
+  function ifNotExistsFormatter(cursor: TreeCursor, indent: number): string {
+    var output = '';
+    var tempCursor = cursor.node.cursor;
+    if (tempCursor.firstChild()) {
+      do {
+        if (tempCursor.type.name == 'If') {
+          output += plainFormatter(tempCursor, indent);
+        }
+        if (tempCursor.type.name == 'Not') {
+          output += plainFormatter(tempCursor, indent);
+        }
+
+        if (tempCursor.type.name == 'Exists') {
+          output += plainFormatter(tempCursor, indent);
+        }
+      } while (tempCursor.nextSibling());
+    }
+    return output;
+  }
+
+  function ifExistsFormatter(cursor: TreeCursor, indent: number) {
+    var output = '';
+    var tempCursor = cursor.node.cursor;
+    if (tempCursor.firstChild()) {
+      do {
+        if (tempCursor.type.name == 'If') {
+          output += plainFormatter(tempCursor, indent);
+        }
+
+        if (tempCursor.type.name == 'Exists') {
+          output += plainFormatter(tempCursor, indent);
+        }
+      } while (tempCursor.nextSibling());
+    }
+    return output;
+  }
+
+  function expressionFormatter(cursor: TreeCursor, indent: number) {
+    var output = '';
+    var tempCursor = cursor.node.cursor;
+    if (tempCursor.firstChild()) {
+      do {
+        if (tempCursor.type.name == 'ColIdentifier') {
           output += colIdentifierFormatter(tempCursor, indent);
         }
-  
-        if (
-          ["Lss", "Gtr", "Gte", "Lte", "Eql", "In", "Not"].includes(
-            tempCursor.type.name
-          )
-        ) {
+
+        if (tempCursor.type.name == 'Select_with_parens') {
+          output += selectWithParensFormatter(tempCursor, indent + 2);
+        }
+
+        if (['Lss', 'Gtr', 'Gte', 'Lte', 'Eql', 'In', 'Not'].includes(tempCursor.type.name)) {
           output += noIndentFormatter(tempCursor);
         }
-  
-        if (tempCursor.type.name == "NumberLiteral") {
+
+        if (tempCursor.type.name == 'NumberLiteral') {
           output += numberLiteralFormatter(tempCursor);
         }
       } while (tempCursor.nextSibling());
     }
     return output;
   }
-  function keywordFormatter(cursor: TreeCursor, indent:number): string {
-    return basicIndent(indent) + sliceDoc(cursor) + "\n";
+  function keywordFormatter(cursor: TreeCursor, indent: number): string {
+    return basicIndent(indent) + sliceDoc(cursor) + '\n';
   }
-  
-  function whereClauseFormatter(cursor: TreeCursor, indent:number): string {
-    var output: string = "";
-    var tempCursor: TreeCursor = cursor.node.cursor;
-  
+
+  function whereClauseFormatter(cursor: TreeCursor, indent: number): string {
+    var output: string = '';
+
+    var tempCursor = cursor.node.cursor;
+
     if (tempCursor.firstChild()) {
       do {
-        if (tempCursor.type.name == "Where") {
-          output += "\n" + keywordFormatter(tempCursor, indent);
+        if (tempCursor.type.name == 'Where') {
+          output += '\n' + keywordFormatter(tempCursor, indent);
         }
-        if (tempCursor.type.name == "ExpressionA") {
+        if (tempCursor.type.name == 'ExpressionA') {
           output += expressionFormatter(tempCursor, indent + 1);
         }
       } while (tempCursor.nextSibling());
     }
-  
+
     return output;
   }
-  function fromListFormatter(cursor: TreeCursor, indent: number): string {
-    var output: string = "";
-    var tempCursor: TreeCursor = cursor.node.cursor;
-  
+  function fromListFormatter(cursor: TreeCursor, indent: number) {
+    var output = '';
+    var tempCursor = cursor.node.cursor;
     if (tempCursor.firstChild()) {
       do {
-        if (tempCursor.type.name == "Identifier") {
-          output += basicIndent(indent) + sliceDoc(tempCursor);
+        if (tempCursor.type.name == 'Identifier') {
+          output += basicIndent(indent + 1) + sliceDoc(tempCursor);
         }
-  
-        if (tempCursor.type.name == "Comma") {
-          output += ",\n";
+
+        if (tempCursor.type.name == 'Comma') {
+          output += ',\n';
         }
-  
-        if (tempCursor.type.name == "Select_with_parens") {
-          output += selectWithParensFormatter(tempCursor, indent + 1);
+
+        if (tempCursor.type.name == 'Select_with_parens') {
+          output += selectWithParensFormatter(tempCursor, indent + 2);
         }
-  
-        if (tempCursor.type.name == "As") {
-          output += noIndentFormatter(tempCursor) + " ";
+
+        if (tempCursor.type.name == 'As') {
+          output += noIndentFormatter(tempCursor) + ' ';
         }
-        if (tempCursor.type.name == "ColIdentifier") {
+        if (tempCursor.type.name == 'ColIdentifier') {
           output += colIdentifierFormatter(tempCursor, 0);
         }
       } while (tempCursor.nextSibling());
     }
-  
+
     return output;
   }
-  
-  function numberLiteralFormatter(cursor: TreeCursor, indent?: number): string {
-    var output: string = "";
+
+  function numberLiteralFormatter(cursor: TreeCursor, indent?: number) {
+    var output = '';
     output = sliceDoc(cursor);
-  
+
     return output;
   }
-  
-  function selectWithParensFormatter(cursor: TreeCursor, indent: number): string {
-    var output: string = "";
+
+  function selectWithParensFormatter(cursor: TreeCursor, indent: number) {
+    var output: string = '';
     var tempCursor: TreeCursor = cursor.node.cursor;
-  
+
     if (tempCursor.firstChild()) {
       do {
-        if (tempCursor.type.name == "Opl") {
-          output += parenFormatter(tempCursor, indent - 1) + "\n";
+        if (tempCursor.type.name == 'Opl') {
+          output += parenFormatter(tempCursor, indent - 3) + '\n';
         }
-  
-        if (tempCursor.type.name == "Opr") {
-          output += "\n" + parenFormatter(tempCursor, indent - 1);
+
+        if (tempCursor.type.name == 'Opr') {
+          output += '\n' + parenFormatter(tempCursor, indent - 2);
         }
-        if (tempCursor.type.name == "Select_no_parens") {
+
+        if (tempCursor.type.name == 'Select_no_parens') {
           output += selectStmtFormatter(tempCursor, indent);
         }
       } while (tempCursor.nextSibling());
     }
     return output;
   }
-  function parenFormatter(cursor: TreeCursor, indent: number): string {
-    var output: string = "";
-    var tempCursor: TreeCursor = cursor.node.cursor;
-  
+  function parenFormatter(cursor: TreeCursor, indent: number) {
+    var output = '';
+    var tempCursor = cursor.node.cursor;
     output = basicIndent(indent) + sliceDoc(tempCursor);
     return output;
   }
-  function selectStmtFormatter(cursor: TreeCursor, indent: number): string {
-    var output: string = "";
-    var tempCursor: TreeCursor = cursor.node.cursor;
-  
+
+  function selectStmtFormatter(cursor: TreeCursor, indent: number) {
+    var tempCursor = cursor.node.cursor;
+    var selectOuput = '';
+
     if (tempCursor.firstChild()) {
       if (tempCursor.firstChild()) {
         do {
-          if (tempCursor.type.name == "Select") {
-            output += keywordFormatter(tempCursor, indent);
-          }
-  
-          if (tempCursor.type.name == "Target_list") {
-            output += targetListFormatter(tempCursor, indent + 1);
-          }
-          if (tempCursor.type.name == "From_clause") {
-            output += fromClauseFormatter(tempCursor, indent);
-          }
-  
-          if (tempCursor.type.name == "Where_clause") {
-            output += whereClauseFormatter(tempCursor, indent);
-          }
+          selectOuput += functionMap[tempCursor.type.name](tempCursor, indent);
         } while (tempCursor.nextSibling());
       }
+      return selectOuput;
     }
-    return output;
   }
-  
-  function colIdentifierFormatter(cursor: TreeCursor, indent: number) {
-    var output: string = "";
+
+  function colIdentifierFormatter(cursor: TreeCursor, indent: number): string {
+    var output: string = '';
     var tempCursor: TreeCursor = cursor.node.cursor;
+
     if (tempCursor.firstChild()) {
-      if (tempCursor.type.name == "Identifier") {
+      if (tempCursor.type.name == 'Identifier') {
         output += basicIndent(indent) + sliceDoc(tempCursor);
       }
     }
-  
+
     return output;
   }
-  
+
+  function tempFormatter(cursor: TreeCursor): string {
+    var tempCursor = cursor.node.cursor;
+    let formattedQuery: string = '';
+
+    while (tempCursor.next()) {
+      if (tempCursor.type.name == 'Smc') {
+        break;
+      }
+
+      const node = tempCursor.node.firstChild;
+      if (node == null) {
+        formattedQuery += sliceDoc(tempCursor);
+        if (['EmailAddr', 'Identifier', 'Urli', 'IpA', 'LabelName', 'StringLiteral'].includes(tempCursor.type.name)) {
+          formattedQuery += '\n';
+        } else {
+          formattedQuery += ' ';
+        }
+      }
+    }
+
+    return formattedQuery;
+  }
+
   function sliceDoc(cursor: TreeCursor): string {
     return doc1.slice(cursor.from, cursor.to);
   }
-  
-  var t1 = performance.now();
-  
-  console.log("This took " + (t1 - t0) + " milliseconds.");
-  
+
+  var val = parse(input);
+  return mainFormatter(val.cursor(), input);
+}
+
+console.log(format("select * from val;")) //your query here
