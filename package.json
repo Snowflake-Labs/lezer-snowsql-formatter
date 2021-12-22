@@ -19,7 +19,7 @@
   "homepage": "https://github.com/Snowflake-Labs/lezer-snowsql-formatter#readme",
   "dependencies": {
     "lezer-tree": "^0.13.2",
-    "lezer-snowsql": "git+https://github.com/Snowflake-Labs/lezer-snowsql.git#lezer-snowsql-wip"
+    "lezer-snowsql": "git+https://github.com/Snowflake-Labs/lezer-snowsql.git#add_dbt_definitions"
   },
   "devDependencies": {
     "@types/node": "^15.12.2"
